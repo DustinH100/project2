@@ -1,0 +1,88 @@
+import signal
+import sys
+import socket
+import os
+import json
+import vcgencmd
+import tkinter as tk
+from tkinter import Label, Button
+
+def grace_exit(sig, frame):
+    print("Closing the server.")
+    s.close()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, grace_exit)
+
+s = socket.socket()
+host = '192.168.0.10'  
+port = 5000
+s.bind((host, port))
+s.listen(5)
+
+def get_temperature():
+    return os.popen("vcgencmd measure_temp").readline()
+
+def get_cpu_speed():
+    return os.popen("vcgencmd measure_clock arm").readline()
+
+def get_gpu_speed():
+    return os.popen("vcgencmd measure_clock core").readline()
+
+def get_memory_info():
+    mem_info = os.popen("free").readlines()
+    used_memory = mem_info[1].split()[2]
+    total_memory = mem_info[1].split()[1]
+    return {'used_memory': used_memory, 'total_memory': total_memory}
+
+def create_gui():
+    root = tk.Tk()
+    root.title("System Monitor")
+
+    values_label = Label(root, text="")
+    values_label.pack()
+
+    led_label = Label(root, text="\u2B24")  # U+2B24 (Black Large Circle)
+    led_label.pack()
+
+    exit_button = Button(root, text="Exit", command=root.destroy)
+    exit_button.pack()
+
+    return root, values_label, led_label
+
+def update_gui(values_label, led_label, data):
+    values_label.config(text=json.dumps(data, indent=2))
+    led_label.config(text="◯")  # Toggle Unicode Led to be empty
+
+def main():
+    root, values_label, led_label = create_gui()
+
+    while True:
+        try:
+            c, addr = s.accept()
+            print('Got connection from', addr)
+
+            temperature = get_temperature()
+            cpu_speed = get_cpu_speed()
+            gpu_speed = get_gpu_speed()
+            memory_info = get_memory_info()
+
+            data = {
+                "Temperature": temperature,
+                "CPU_Speed": cpu_speed,
+                "GPU_Speed": gpu_speed,
+                "Used_Memory": memory_info['used_memory'],
+                "Total_Memory": memory_info['total_memory'],
+            }
+
+            update_gui(values_label, led_label, data)
+
+            c.close()
+        except Exception as e:
+            print(f"Error: {e}")
+
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
+
